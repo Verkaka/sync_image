@@ -1,0 +1,961 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Docker 镜像同步工具</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+            font-size: 14px;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .form-group textarea {
+            min-height: 120px;
+            resize: vertical;
+            font-family: 'Courier New', monospace;
+        }
+
+        .form-group small {
+            display: block;
+            margin-top: 5px;
+            color: #666;
+            font-size: 12px;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        @media (max-width: 768px) {
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 14px 30px;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            width: 100%;
+        }
+
+        .btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .btn-stop {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            margin-top: 10px;
+        }
+
+        .output-container {
+            margin-top: 30px;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            overflow: hidden;
+            display: none;
+        }
+
+        .output-container.active {
+            display: block;
+        }
+
+        .output-header {
+            background: #f5f5f5;
+            padding: 15px;
+            border-bottom: 2px solid #e0e0e0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .output-header h3 {
+            color: #333;
+            font-size: 16px;
+        }
+
+        .status-badge {
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .status-running {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .status-completed {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .output-content {
+            padding: 20px;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            max-height: 500px;
+            overflow-y: auto;
+            line-height: 1.6;
+        }
+
+        .output-content .line {
+            margin-bottom: 5px;
+            word-wrap: break-word;
+        }
+
+        .output-content .line.success {
+            color: #4ec9b0;
+        }
+
+        .output-content .line.error {
+            color: #f48771;
+        }
+
+        .summary {
+            margin-top: 20px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            display: none;
+        }
+
+        .summary.active {
+            display: block;
+        }
+
+        .summary h4 {
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .summary-item {
+            margin-bottom: 10px;
+            padding: 10px;
+            background: white;
+            border-radius: 4px;
+            border-left: 4px solid #667eea;
+        }
+
+        .summary-item.success {
+            border-left-color: #28a745;
+        }
+
+        .summary-item.error {
+            border-left-color: #dc3545;
+        }
+
+        .summary-item strong {
+            display: block;
+            margin-bottom: 5px;
+            color: #333;
+        }
+
+        .summary-item span {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s ease-in-out infinite;
+            margin-right: 8px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .search-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border: 2px solid #e0e0e0;
+        }
+
+        .search-section h3 {
+            margin-bottom: 15px;
+            color: #333;
+            font-size: 18px;
+        }
+
+        .search-input-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .search-input-group input {
+            flex: 1;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        .search-input-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .btn-search {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .btn-search:hover:not(:disabled) {
+            opacity: 0.9;
+        }
+
+        .btn-search:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .search-results {
+            display: none;
+            margin-top: 15px;
+            max-height: 300px;
+            overflow-y: auto;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            background: white;
+        }
+
+        .search-results.active {
+            display: block;
+        }
+
+        .search-results-header {
+            padding: 12px 15px;
+            background: #f5f5f5;
+            border-bottom: 2px solid #e0e0e0;
+            font-weight: 600;
+            color: #333;
+            font-size: 14px;
+        }
+
+        .tags-list {
+            padding: 10px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .tag-item {
+            padding: 6px 12px;
+            background: #e9ecef;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .tag-item:hover {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+
+        .search-error {
+            padding: 15px;
+            color: #dc3545;
+            background: #f8d7da;
+            border-radius: 4px;
+            margin-top: 10px;
+            display: none;
+        }
+
+        .search-error.active {
+            display: block;
+        }
+
+        .search-loading {
+            padding: 15px;
+            text-align: center;
+            color: #666;
+            display: none;
+        }
+
+        .search-loading.active {
+            display: block;
+        }
+
+        .search-options {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+
+        .search-option-group {
+            flex: 1;
+            min-width: 200px;
+        }
+
+        .search-option-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #333;
+            font-size: 13px;
+        }
+
+        .search-option-group input,
+        .search-option-group select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 13px;
+        }
+
+        .search-option-group input:focus,
+        .search-option-group select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .image-item {
+            padding: 10px;
+            background: white;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .image-item:hover {
+            background: #f0f0f0;
+            border-color: #667eea;
+        }
+
+        .image-item-name {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 4px;
+        }
+
+        .image-item-name .official-badge {
+            display: inline-block;
+            padding: 2px 6px;
+            background: #28a745;
+            color: white;
+            border-radius: 3px;
+            font-size: 11px;
+            margin-left: 8px;
+        }
+
+        .image-item-desc {
+            color: #666;
+            font-size: 12px;
+            margin-bottom: 4px;
+        }
+
+        .image-item-stars {
+            color: #999;
+            font-size: 11px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🐳 Docker 镜像同步工具</h1>
+            <p>批量同步 Docker 镜像到指定仓库</p>
+        </div>
+
+        <div class="content">
+            <!-- 镜像搜索区域 -->
+            <div class="search-section">
+                <h3>🔍 搜索镜像</h3>
+                <div class="search-options">
+                    <div class="search-option-group">
+                        <label for="searchRegistry">Registry（可选，非Docker Hub时必填）</label>
+                        <input 
+                            type="text" 
+                            id="searchRegistry" 
+                            placeholder="如: registry.example.com（留空使用Docker Hub）"
+                        >
+                    </div>
+                    <div class="search-option-group">
+                        <label for="searchType">搜索类型（仅Docker Hub）</label>
+                        <select id="searchType">
+                            <option value="tags">搜索版本Tags</option>
+                            <option value="images">搜索镜像名称</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="search-options" style="margin-top: 10px;">
+                    <div class="search-option-group">
+                        <label for="searchUsername">Docker Hub 用户名（可选，避免速率限制）</label>
+                        <input 
+                            type="text" 
+                            id="searchUsername" 
+                            placeholder="Docker Hub 用户名或 Access Token"
+                        >
+                    </div>
+                    <div class="search-option-group">
+                        <label for="searchPassword">密码/Token（可选）</label>
+                        <input 
+                            type="password" 
+                            id="searchPassword" 
+                            placeholder="密码或 Access Token"
+                        >
+                    </div>
+                </div>
+                <div class="search-input-group">
+                    <input 
+                        type="text" 
+                        id="searchImage" 
+                        placeholder="输入镜像名称，如: nginx, redis, alpine..."
+                    >
+                    <button type="button" class="btn-search" id="searchBtn">搜索</button>
+                </div>
+                <div class="search-loading" id="searchLoading">正在搜索...</div>
+                <div class="search-error" id="searchError"></div>
+                <div class="search-results" id="searchResults">
+                    <div class="search-results-header" id="searchResultsHeader"></div>
+                    <div class="tags-list" id="tagsList"></div>
+                </div>
+            </div>
+
+            <form id="syncForm">
+                <div class="form-group">
+                    <label for="images">镜像列表（每行一个，格式：image:tag）</label>
+                    <textarea 
+                        id="images" 
+                        name="images" 
+                        placeholder="例如：&#10;nginx:latest&#10;redis:7.0&#10;alpine:3.18"
+                        required
+                    ></textarea>
+                    <small>每行输入一个镜像，格式必须为 image:tag</small>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="repo">目标仓库</label>
+                        <input 
+                            type="text" 
+                            id="repo" 
+                            name="repo" 
+                            value="devops-docker-bkrepo.glmszq.com/l10b3a/docker-local"
+                            required
+                        >
+                        <small>目标 Docker 仓库地址</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="arch">目标架构</label>
+                        <select id="arch" name="arch">
+                            <option value="arm">ARM64 (linux/arm64)</option>
+                            <option value="amd64">AMD64 (linux/amd64)</option>
+                        </select>
+                        <small>选择目标镜像架构</small>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="dockerUsername">Docker Hub 认证（可选，避免速率限制）</label>
+                        <input 
+                            type="text" 
+                            id="dockerUsername" 
+                            name="dockerUsername" 
+                            placeholder="Docker Hub 用户名或 Access Token"
+                        >
+                        <small>输入用户名可提高拉取速率限制</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="dockerPassword">密码/Token</label>
+                        <input 
+                            type="password" 
+                            id="dockerPassword" 
+                            name="dockerPassword" 
+                            placeholder="密码或 Access Token"
+                        >
+                        <small>留空则使用匿名访问（可能受速率限制）</small>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn" id="submitBtn">
+                    🚀 开始同步
+                </button>
+                <button type="button" class="btn btn-stop" id="stopBtn" style="display: none;">
+                    ⏹️ 停止同步
+                </button>
+            </form>
+
+            <div class="output-container" id="outputContainer">
+                <div class="output-header">
+                    <h3>同步日志</h3>
+                    <span class="status-badge status-running" id="statusBadge">运行中...</span>
+                </div>
+                <div class="output-content" id="outputContent"></div>
+            </div>
+
+            <div class="summary" id="summary">
+                <h4>📊 同步报告</h4>
+                <div id="summaryContent"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('syncForm');
+        const submitBtn = document.getElementById('submitBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const outputContainer = document.getElementById('outputContainer');
+        const outputContent = document.getElementById('outputContent');
+        const statusBadge = document.getElementById('statusBadge');
+        const summary = document.getElementById('summary');
+        const summaryContent = document.getElementById('summaryContent');
+
+        // 搜索相关元素
+        const searchImage = document.getElementById('searchImage');
+        const searchRegistry = document.getElementById('searchRegistry');
+        const searchType = document.getElementById('searchType');
+        const searchUsername = document.getElementById('searchUsername');
+        const searchPassword = document.getElementById('searchPassword');
+        const searchBtn = document.getElementById('searchBtn');
+        const searchResults = document.getElementById('searchResults');
+        const searchResultsHeader = document.getElementById('searchResultsHeader');
+        const tagsList = document.getElementById('tagsList');
+        const searchError = document.getElementById('searchError');
+        const searchLoading = document.getElementById('searchLoading');
+        const imagesTextarea = document.getElementById('images');
+
+        let eventSource = null;
+        let isRunning = false;
+        let currentSearchImage = ''; // 保存当前搜索的镜像名称
+
+        // 根据registry更新搜索类型选项
+        searchRegistry.addEventListener('input', () => {
+            const registry = searchRegistry.value.trim();
+            if (registry && registry !== 'docker.io' && registry !== 'hub.docker.com') {
+                // 非Docker Hub，只能搜索tags
+                searchType.value = 'tags';
+                searchType.disabled = true;
+            } else {
+                // Docker Hub，可以搜索镜像或tags
+                searchType.disabled = false;
+            }
+        });
+
+        // 执行搜索的函数
+        async function performSearch(imageName, registry, type) {
+            if (!imageName) {
+                searchError.textContent = '请输入镜像名称';
+                searchError.classList.add('active');
+                return;
+            }
+
+            // 非Docker Hub必须指定registry
+            if (registry && registry !== 'docker.io' && registry !== 'hub.docker.com' && type === 'images') {
+                searchError.textContent = '非Docker Hub仓库只能搜索tags，不能搜索镜像名称';
+                searchError.classList.add('active');
+                return;
+            }
+
+            searchError.classList.remove('active');
+            searchResults.classList.remove('active');
+            searchLoading.classList.add('active');
+            searchBtn.disabled = true;
+            tagsList.innerHTML = '';
+            currentSearchImage = imageName;
+
+            try {
+                let url = `/api/search?image=${encodeURIComponent(imageName)}&limit=100`;
+                if (registry) {
+                    url += `&registry=${encodeURIComponent(registry)}`;
+                }
+                if (type === 'images') {
+                    url += `&type=images`;
+                }
+                // 添加认证信息
+                const username = searchUsername.value.trim();
+                const password = searchPassword.value.trim();
+                if (username) {
+                    url += `&username=${encodeURIComponent(username)}`;
+                }
+                if (password) {
+                    url += `&password=${encodeURIComponent(password)}`;
+                }
+
+                const response = await fetch(url);
+                const data = await response.json();
+
+                searchLoading.classList.remove('active');
+
+                if (!data.success) {
+                    searchError.textContent = data.error || '搜索失败';
+                    searchError.classList.add('active');
+                    return;
+                }
+
+                // 处理镜像列表搜索结果（Docker Hub模糊搜索）
+                if (data.images && data.images.length > 0) {
+                    searchResultsHeader.textContent = `找到 ${data.total || data.images.length} 个镜像:`;
+                    tagsList.innerHTML = '';
+
+                    data.images.forEach(img => {
+                        const imgDiv = document.createElement('div');
+                        imgDiv.className = 'image-item';
+                        imgDiv.innerHTML = `
+                            <div class="image-item-name">
+                                ${img.name}
+                                ${img.official ? '<span class="official-badge">官方</span>' : ''}
+                            </div>
+                            ${img.description ? `<div class="image-item-desc">${img.description}</div>` : ''}
+                            ${img.stars ? `<div class="image-item-stars">⭐ ${img.stars} stars</div>` : ''}
+                        `;
+                        imgDiv.title = `点击搜索此镜像的版本: ${img.name}`;
+                        imgDiv.addEventListener('click', async () => {
+                            // 点击镜像后，搜索该镜像的tags
+                            searchImage.value = img.name;
+                            searchType.value = 'tags';
+                            await performSearch(img.name, registry, 'tags');
+                        });
+                        tagsList.appendChild(imgDiv);
+                    });
+
+                    searchResults.classList.add('active');
+                }
+                // 处理tags搜索结果
+                else if (data.tags && data.tags.length > 0) {
+                    searchResultsHeader.textContent = `找到 ${data.tags.length} 个版本:`;
+                    tagsList.innerHTML = '';
+
+                    data.tags.forEach(tag => {
+                        const tagDiv = document.createElement('div');
+                        tagDiv.className = 'tag-item';
+                        tagDiv.textContent = tag.name;
+                        // 构建完整的镜像名称
+                        let fullImageName = currentSearchImage;
+                        if (registry && registry !== 'docker.io' && registry !== 'hub.docker.com') {
+                            // 私有registry，需要包含registry信息
+                            if (!fullImageName.includes('/')) {
+                                fullImageName = `${registry}/${fullImageName}`;
+                            } else if (!fullImageName.startsWith(registry)) {
+                                fullImageName = `${registry}/${fullImageName}`;
+                            }
+                        }
+                        tagDiv.title = `点击添加到镜像列表: ${fullImageName}:${tag.name}`;
+                        tagDiv.addEventListener('click', () => {
+                            const fullImage = `${fullImageName}:${tag.name}`;
+                            const currentValue = imagesTextarea.value.trim();
+                            if (currentValue && !currentValue.endsWith('\n')) {
+                                imagesTextarea.value += '\n';
+                            }
+                            imagesTextarea.value += fullImage + '\n';
+                            imagesTextarea.focus();
+                            // 滚动到底部
+                            imagesTextarea.scrollTop = imagesTextarea.scrollHeight;
+                        });
+                        tagsList.appendChild(tagDiv);
+                    });
+
+                    searchResults.classList.add('active');
+                } else {
+                    searchError.textContent = type === 'images' ? '未找到任何镜像' : '未找到任何版本';
+                    searchError.classList.add('active');
+                }
+            } catch (error) {
+                searchLoading.classList.remove('active');
+                searchError.textContent = `搜索错误: ${error.message}`;
+                searchError.classList.add('active');
+            } finally {
+                searchBtn.disabled = false;
+            }
+        }
+
+        // 搜索功能
+        searchBtn.addEventListener('click', async () => {
+            const imageName = searchImage.value.trim();
+            const registry = searchRegistry.value.trim() || null;
+            const type = searchType.value;
+            await performSearch(imageName, registry, type);
+        });
+
+        // 支持回车搜索
+        searchImage.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                searchBtn.click();
+            }
+        });
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            if (isRunning) {
+                return;
+            }
+
+            const images = document.getElementById('images').value
+                .split('\n')
+                .map(line => line.trim())
+                .filter(line => line.length > 0);
+            
+            const repo = document.getElementById('repo').value.trim();
+            const arch = document.getElementById('arch').value;
+            const dockerUsername = document.getElementById('dockerUsername').value.trim();
+            const dockerPassword = document.getElementById('dockerPassword').value.trim();
+
+            if (images.length === 0) {
+                alert('请至少输入一个镜像');
+                return;
+            }
+
+            // 验证镜像格式
+            for (const img of images) {
+                if (!img.includes(':')) {
+                    alert(`镜像格式错误: ${img}\n格式必须为 image:tag`);
+                    return;
+                }
+            }
+
+            // 构建认证信息
+            let docker_auth = null;
+            if (dockerUsername && dockerPassword) {
+                docker_auth = {
+                    registry: 'docker.io',
+                    username: dockerUsername,
+                    password: dockerPassword
+                };
+            }
+
+            // 重置UI
+            outputContent.innerHTML = '';
+            summaryContent.innerHTML = '';
+            outputContainer.classList.add('active');
+            summary.classList.remove('active');
+            statusBadge.textContent = '运行中...';
+            statusBadge.className = 'status-badge status-running';
+            
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<span class="loading"></span>同步中...';
+            stopBtn.style.display = 'block';
+            isRunning = true;
+
+            // 发送请求
+            try {
+                const requestBody = {
+                    images: images,
+                    repo: repo,
+                    arch: arch
+                };
+                if (docker_auth) {
+                    requestBody.docker_auth = docker_auth;
+                }
+
+                const response = await fetch('/api/sync', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                // 处理 Server-Sent Events
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    const chunk = decoder.decode(value);
+                    const lines = chunk.split('\n');
+
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const data = JSON.parse(line.slice(6));
+                                
+                                if (data.type === 'output') {
+                                    addOutputLine(data.line);
+                                } else if (data.type === 'status') {
+                                    handleStatusUpdate(data);
+                                }
+                            } catch (e) {
+                                console.error('解析数据错误:', e);
+                            }
+                        }
+                    }
+                }
+            } catch (error) {
+                addOutputLine(`❌ 错误: ${error.message}`, 'error');
+                statusBadge.textContent = '错误';
+                statusBadge.className = 'status-badge status-error';
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '🚀 开始同步';
+                stopBtn.style.display = 'none';
+                isRunning = false;
+            }
+        });
+
+        stopBtn.addEventListener('click', () => {
+            if (eventSource) {
+                eventSource.close();
+                eventSource = null;
+            }
+            addOutputLine('⏹️ 用户停止同步', 'error');
+            statusBadge.textContent = '已停止';
+            statusBadge.className = 'status-badge status-error';
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '🚀 开始同步';
+            stopBtn.style.display = 'none';
+            isRunning = false;
+        });
+
+        function addOutputLine(line, type = '') {
+            const lineDiv = document.createElement('div');
+            lineDiv.className = `line ${type}`;
+            lineDiv.textContent = line;
+            outputContent.appendChild(lineDiv);
+            outputContent.scrollTop = outputContent.scrollHeight;
+        }
+
+        function handleStatusUpdate(data) {
+            statusBadge.textContent = data.status === 'completed' ? '已完成' : '错误';
+            statusBadge.className = `status-badge status-${data.status}`;
+
+            // 显示摘要
+            summary.classList.add('active');
+            summaryContent.innerHTML = '';
+
+            if (data.success_list && data.success_list.length > 0) {
+                const successDiv = document.createElement('div');
+                successDiv.className = 'summary-item success';
+                successDiv.innerHTML = `
+                    <strong>✅ 成功 (${data.success_list.length})</strong>
+                    <span>${data.success_list.join(', ')}</span>
+                `;
+                summaryContent.appendChild(successDiv);
+            }
+
+            if (data.fail_list && data.fail_list.length > 0) {
+                const failDiv = document.createElement('div');
+                failDiv.className = 'summary-item error';
+                failDiv.innerHTML = `
+                    <strong>❌ 失败 (${data.fail_list.length})</strong>
+                    <span>${data.fail_list.join(', ')}</span>
+                `;
+                summaryContent.appendChild(failDiv);
+            }
+        }
+    </script>
+</body>
+</html>
