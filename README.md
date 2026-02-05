@@ -15,15 +15,17 @@
 
 ### Web 界面（推荐）
 
-1. **安装依赖**
+1. **安装依赖**（首次使用或依赖变更时）
    ```bash
    pip install -r requirements.txt
    ```
 
 2. **启动 Web 服务**
    ```bash
-   python app.py
+   ./start.sh
    ```
+   脚本会自动检查 Python 与依赖，缺失时提示安装；启动后监听 `http://localhost:8080`。  
+   也可直接运行：`python app.py`（或 `python3 app.py`）。
 
 3. **访问界面**
    打开浏览器访问 `http://localhost:8080`
@@ -95,6 +97,7 @@ python sync_image.py nginx:latest --repo your-registry.com/namespace --use-local
 
 ```
 sync_image/
+├── start.sh           # Web 服务启动脚本（推荐使用此方式启动）
 ├── sync_image.py      # 核心同步逻辑
 ├── image_search.py    # 镜像搜索模块
 ├── app.py             # Flask Web 应用
