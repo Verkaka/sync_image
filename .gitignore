@@ -40,3 +40,6 @@ ENV/
 # Environment variables
 .env
 .env.local
+
+# 本地使用记录（不提交到仓库）
+repo_history.json

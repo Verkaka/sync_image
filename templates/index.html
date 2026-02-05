@@ -91,6 +91,18 @@
             font-size: 12px;
         }
 
+        .checkbox-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            color: #333;
+        }
+        .checkbox-label input[type="checkbox"] {
+            width: auto;
+        }
+
         .form-row {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -545,10 +557,12 @@
                             type="text" 
                             id="repo" 
                             name="repo" 
-                            value="devops-docker-bkrepo.glmszq.com/l10b3a/docker-local"
+                            list="repoHistory"
+                            placeholder="输入或从下拉选择已使用过的仓库"
                             required
                         >
-                        <small>目标 Docker 仓库地址</small>
+                        <datalist id="repoHistory"></datalist>
+                        <small>目标 Docker 仓库地址（必填，可从使用记录中选择）</small>
                     </div>
 
                     <div class="form-group">
@@ -559,6 +573,13 @@
                         </select>
                         <small>选择目标镜像架构</small>
                     </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="useLocal" name="useLocal" value="1">
+                        使用本地已有镜像（不拉取：若镜像已存在本地则直接打 tag 并推送）
+                    </label>
                 </div>
 
                 <div class="form-row">
@@ -791,6 +812,22 @@
             }
         });
 
+        // 加载目标仓库使用记录到下拉
+        (async function loadRepoHistory() {
+            try {
+                const res = await fetch('/api/repo-history');
+                if (!res.ok) return;
+                const list = await res.json();
+                const dl = document.getElementById('repoHistory');
+                dl.innerHTML = '';
+                (list || []).forEach(function (r) {
+                    const opt = document.createElement('option');
+                    opt.value = r;
+                    dl.appendChild(opt);
+                });
+            } catch (e) {}
+        })();
+
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
             
@@ -805,9 +842,14 @@
             
             const repo = document.getElementById('repo').value.trim();
             const arch = document.getElementById('arch').value;
+            const useLocal = document.getElementById('useLocal').checked;
             const dockerUsername = document.getElementById('dockerUsername').value.trim();
             const dockerPassword = document.getElementById('dockerPassword').value.trim();
 
+            if (!repo) {
+                alert('请填写目标仓库地址');
+                return;
+            }
             if (images.length === 0) {
                 alert('请至少输入一个镜像');
                 return;
@@ -849,7 +891,8 @@
                 const requestBody = {
                     images: images,
                     repo: repo,
-                    arch: arch
+                    arch: arch,
+                    use_local: useLocal
                 };
                 if (docker_auth) {
                     requestBody.docker_auth = docker_auth;

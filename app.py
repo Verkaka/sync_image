@@ -2,13 +2,16 @@
 """
 Flask Web 应用 - Docker 镜像同步工具
 """
+import os
+import json
+import queue
+import threading
+
 from flask import Flask, render_template, request, jsonify, Response
 from flask_cors import CORS
+
 import sync_image
 import image_search
-import threading
-import queue
-import json
 
 app = Flask(__name__)
 CORS(app)  # 允许跨域请求
@@ -17,7 +20,40 @@ CORS(app)  # 允许跨域请求
 tasks = {}
 task_counter = 0
 
-def run_sync_task(task_id, images, repo, arch, output_queue, docker_auth=None):
+# 目标仓库使用记录文件（不包含默认值，仅保存用户使用过的仓库）
+REPO_HISTORY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "repo_history.json")
+REPO_HISTORY_MAX = 20
+
+
+def load_repo_history():
+    """加载仓库使用记录列表，最新使用的在前"""
+    if not os.path.isfile(REPO_HISTORY_FILE):
+        return []
+    try:
+        with open(REPO_HISTORY_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+
+def save_repo_to_history(repo):
+    """将本次使用的仓库写入使用记录（去重，新使用的插到最前）"""
+    repo = (repo or "").strip()
+    if not repo:
+        return
+    history = load_repo_history()
+    history = [r for r in history if r != repo]
+    history.insert(0, repo)
+    history = history[: REPO_HISTORY_MAX]
+    try:
+        with open(REPO_HISTORY_FILE, "w", encoding="utf-8") as f:
+            json.dump(history, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+
+def run_sync_task(task_id, images, repo, arch, output_queue, docker_auth=None, use_local=False):
     """在线程中执行同步任务"""
     tasks[task_id] = {
         "status": "running",
@@ -31,7 +67,11 @@ def run_sync_task(task_id, images, repo, arch, output_queue, docker_auth=None):
         tasks[task_id]["output"].append(line)
     
     try:
-        result = sync_image.sync_images(images, repo, arch, output_callback, docker_auth)
+        result = sync_image.sync_images(
+            images, repo, arch, output_callback,
+            docker_auth=docker_auth,
+            use_local=use_local
+        )
         tasks[task_id]["status"] = "completed"
         tasks[task_id]["success_list"] = result["success_list"]
         tasks[task_id]["fail_list"] = result["fail_list"]
@@ -56,10 +96,13 @@ def sync():
     try:
         data = request.json
         images = data.get('images', [])
-        repo = data.get('repo', 'devops-docker-bkrepo.glmszq.com/l10b3a/docker-local')
+        repo = (data.get('repo') or '').strip()
         arch = data.get('arch', 'arm')
+        use_local = data.get('use_local', False)
         docker_auth = data.get('docker_auth', None)  # {'registry': 'docker.io', 'username': 'user', 'password': 'pass'}
         
+        if not repo:
+            return jsonify({"error": "请填写目标仓库地址"}), 400
         if not images:
             return jsonify({"error": "镜像列表不能为空"}), 400
         
@@ -67,6 +110,8 @@ def sync():
         for img in images:
             if ':' not in img:
                 return jsonify({"error": f"镜像格式错误: {img}，必须为 image:tag 格式"}), 400
+        
+        save_repo_to_history(repo)
         
         # 创建任务
         task_counter += 1
@@ -78,7 +123,7 @@ def sync():
         # 在后台线程中启动同步任务
         thread = threading.Thread(
             target=run_sync_task,
-            args=(task_id, images, repo, arch, output_queue, docker_auth)
+            args=(task_id, images, repo, arch, output_queue, docker_auth, use_local)
         )
         thread.daemon = True
         thread.start()
@@ -127,6 +172,21 @@ def sync():
     
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@app.route('/api/repo-history', methods=['GET', 'POST'])
+def repo_history_api():
+    """GET: 获取目标仓库使用记录（用于下拉/补全）。POST: 保存一条仓库到使用记录（可选，同步时也会自动保存）"""
+    if request.method == 'GET':
+        return jsonify(load_repo_history())
+    try:
+        data = request.json or {}
+        repo = (data.get('repo') or '').strip()
+        if repo:
+            save_repo_to_history(repo)
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 @app.route('/api/task/<task_id>', methods=['GET'])
 def get_task_status(task_id):

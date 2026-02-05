@@ -41,8 +41,10 @@
    - **添加镜像**：
      - 搜索镜像名称时，点击镜像可查看其所有版本
      - 点击搜索结果中的版本标签，可自动添加到镜像列表
+   - **目标仓库**：必填，无默认值；可从「使用记录」下拉选择曾用过的仓库（自动保存）
+   - **使用本地镜像**：勾选后，若镜像已存在于本地则跳过拉取，直接打 tag 并推送
    - **手动输入**：在文本框中输入镜像列表（每行一个，格式：`image:tag`）
-   - **设置参数**：设置目标仓库和架构
+   - **设置参数**：选择目标架构
    - **开始同步**：点击"开始同步"按钮
    - **查看结果**：实时查看同步日志和结果报告
 
@@ -57,32 +59,35 @@ python sync_image.py <镜像1> <镜像2> ... [选项]
 ### 示例
 
 ```bash
-# 同步单个镜像（默认 ARM 架构）
-python sync_image.py nginx:latest
+# 同步单个镜像（必须指定目标仓库）
+python sync_image.py nginx:latest --repo your-registry.com/namespace
 
 # 同步多个镜像
-python sync_image.py nginx:latest redis:7.0 alpine:3.18
+python sync_image.py nginx:latest redis:7.0 alpine:3.18 --repo your-registry.com/namespace
 
 # 指定 AMD64 架构
-python sync_image.py nginx:latest --arch amd64
+python sync_image.py nginx:latest --repo your-registry.com/namespace --arch amd64
 
-# 指定目标仓库
-python sync_image.py nginx:latest --repo your-registry.com/namespace
+# 使用本地已有镜像（不拉取，直接打 tag 并推送）
+python sync_image.py nginx:latest --repo your-registry.com/namespace --use-local
 ```
 
 ### 参数说明
 
 - `images`: 一个或多个原始镜像名（必需），格式为 `image:tag`
-- `--repo`: 目标仓库地址（可选），默认为 `devops-docker-bkrepo.glmszq.com/l10b3a/docker-local`
+- `--repo`: 目标仓库地址（**必填**），无默认值
 - `--arch`: 目标架构（可选），可选值：`arm`（默认）或 `amd64`
+- `--use-local`: 若镜像已存在本地则跳过拉取，仅执行 tag + push
 
 ## 工作原理
 
-工具会为每个镜像执行以下步骤：
+对每个镜像：
 
-1. **拉取镜像**: `docker pull --platform <架构> <源镜像>`
+1. **拉取镜像**（可选）：若未启用「使用本地镜像」或本地不存在该镜像，则 `docker pull --platform <架构> <源镜像>`
 2. **标记镜像**: `docker tag <源镜像> <目标镜像>`
 3. **推送镜像**: `docker push <目标镜像>`
+
+启用「使用本地镜像」且镜像已存在时，跳过步骤 1，直接执行 2、3。
 
 镜像名称会自动转换：源镜像 `registry.com/namespace/image:tag` 会被转换为 `目标仓库/image:tag`
 
@@ -108,6 +113,7 @@ sync_image/
 
 ## 注意事项
 
+- **项目安全**：代码中不包含默认镜像仓库地址；目标仓库必填，使用过的仓库会保存到本地使用记录（`repo_history.json`，已加入 `.gitignore`），便于下次选择。
 - **Docker Hub 速率限制**：
   - 匿名用户：100次拉取/6小时
   - 认证用户：200次拉取/6小时
